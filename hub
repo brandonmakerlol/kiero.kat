@@ -1,0 +1,213 @@
+-- Services
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
+local RunService = game:GetService("RunService")
+
+-- UI Elements
+local ScreenGui = Instance.new("ScreenGui")
+local MainFrame = Instance.new("Frame")
+local Title = Instance.new("TextLabel")
+local ESPButton = Instance.new("TextButton")
+local AimbotButton = Instance.new("TextButton")
+local FOVCircle = Drawing.new("Circle")
+
+ScreenGui.Name = "kiero.kat"
+ScreenGui.Parent = game.CoreGui
+
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+MainFrame.Size = UDim2.new(0, 200, 0, 200)
+MainFrame.Position = UDim2.new(0.5, -100, 0.5, -100)
+MainFrame.Active = true
+MainFrame.Draggable = true
+
+Title.Name = "Title"
+Title.Parent = MainFrame
+Title.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.Text = "kiero.kat"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Font = Enum.Font.SourceSans
+Title.TextSize = 20
+
+ESPButton.Name = "ESPButton"
+ESPButton.Parent = MainFrame
+ESPButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+ESPButton.Size = UDim2.new(0, 180, 0, 50)
+ESPButton.Position = UDim2.new(0, 10, 0, 40)
+ESPButton.Text = "Toggle ESP"
+
+AimbotButton.Name = "AimbotButton"
+AimbotButton.Parent = MainFrame
+AimbotButton.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+AimbotButton.Size = UDim2.new(0, 180, 0, 50)
+AimbotButton.Position = UDim2.new(0, 10, 0, 100)
+AimbotButton.Text = "Toggle Aimbot"
+
+-- Variables
+local espEnabled = false
+local aimbotEnabled = false
+local aimbotConnection = nil
+local aimbotTarget = nil
+local holdingRightClick = false
+local toggleKey = Enum.KeyCode.RightShift
+
+-- FOV Circle Configuration
+FOVCircle.Visible = false
+FOVCircle.Radius = 100
+FOVCircle.Thickness = 2
+FOVCircle.Color = Color3.fromRGB(0, 170, 255)
+FOVCircle.Filled = false
+FOVCircle.Position = Vector2.new(workspace.CurrentCamera.ViewportSize.X / 2, workspace.CurrentCamera.ViewportSize.Y / 2)
+
+-- Notification
+StarterGui:SetCore("SendNotification", {
+    Title = "kiero.kat",
+    Text = "Script has loaded",
+    Duration = 5
+})
+
+-- Functions for ESP
+local function createESP(player)
+    if player.Character then
+        local highlight = Instance.new("Highlight")
+        highlight.Adornee = player.Character
+        highlight.Parent = player.Character
+        highlight.FillColor = Color3.new(1, 0, 0)
+        highlight.OutlineColor = Color3.new(1, 1, 1)
+        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        player.CharacterAdded:Connect(function(char)
+            highlight.Adornee = char
+        end)
+    end
+end
+
+local function removeESP(player)
+    if player.Character then
+        for _, v in pairs(player.Character:GetChildren()) do
+            if v:IsA("Highlight") then
+                v:Destroy()
+            end
+        end
+    end
+end
+
+local function toggleESP()
+    espEnabled = not espEnabled
+    if espEnabled then
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= Players.LocalPlayer then
+                createESP(player)
+            end
+        end
+        Players.PlayerAdded:Connect(function(player)
+            createESP(player)
+        end)
+    else
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= Players.LocalPlayer then
+                removeESP(player)
+            end
+        end
+    end
+end
+
+-- Function for Aimbot
+local function aimAt(player)
+    local camera = game.Workspace.CurrentCamera
+    local targetPart = player.Character and player.Character:FindFirstChild("Head")
+    if targetPart then
+        camera.CFrame = CFrame.new(camera.CFrame.Position, targetPart.Position)
+    end
+end
+
+local function isInFOV(target)
+    local camera = game.Workspace.CurrentCamera
+    local screenPoint = camera:WorldToViewportPoint(target.Position)
+    local screenCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+    return (Vector2.new(screenPoint.X, screenPoint.Y) - screenCenter).magnitude < FOVCircle.Radius
+end
+
+local function findClosestTarget()
+    local closestPlayer = nil
+    local shortestDistance = math.huge
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= Players.LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
+            local head = player.Character.Head
+            if isInFOV(head) then
+                local distance = (head.Position - Players.LocalPlayer.Character.Head.Position).magnitude
+                if distance < shortestDistance then
+                    closestPlayer = player
+                    shortestDistance = distance
+                end
+            end
+        end
+    end
+    return closestPlayer
+end
+
+local function toggleAimbot()
+    aimbotEnabled = not aimbotEnabled
+    FOVCircle.Visible = aimbotEnabled
+    if aimbotEnabled then
+        aimbotConnection = RunService.RenderStepped:Connect(function()
+            if holdingRightClick then
+                local target = findClosestTarget()
+                if target and target.Character and target.Character:FindFirstChild("Head") then
+                    aimAt(target)
+                end
+            end
+        end)
+    else
+        if aimbotConnection then
+            aimbotConnection:Disconnect()
+            aimbotConnection = nil
+        end
+    end
+end
+
+-- Button click events
+ESPButton.MouseButton1Click:Connect(function()
+    toggleESP()
+end)
+
+AimbotButton.MouseButton1Click:Connect(function()
+    toggleAimbot()
+end)
+
+-- Keybind to close the UI
+UserInputService.InputBegan:Connect(function(input, processed)
+    if input.KeyCode == toggleKey and not processed then
+        ScreenGui.Enabled = not ScreenGui.Enabled
+    end
+end)
+
+-- Handle right click for aimbot
+UserInputService.InputBegan:Connect(function(input, processed)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 and not processed then
+        holdingRightClick = true
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input, processed)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 and not processed then
+        holdingRightClick = false
+        aimbotTarget = nil
+    end
+end)
+
+-- Update ESP when players join/leave
+Players.PlayerAdded:Connect(function(player)
+    createESP(player)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    removeESP(player)
+end)
+
+-- Update FOV Circle position
+RunService.RenderStepped:Connect(function()
+    FOVCircle.Position = Vector2.new(workspace.CurrentCamera.ViewportSize.X / 2, workspace.CurrentCamera.ViewportSize.Y / 2)
+end)
